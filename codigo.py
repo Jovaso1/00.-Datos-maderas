@@ -51,7 +51,7 @@ if url:
     
     # Mapa de calor por departamento
     dpto_volumen = df.groupby("DPTO")['VOLUMEN M3'].sum().reset_index()
-    colombia = gpd.read_file("colombia.geojson")
+    colombia = gpd.read_file("colombia.geojson", driver="GeoJSON")
     dpto_volumen = colombia.merge(dpto_volumen, left_on='NOMBRE_DPT', right_on='DPTO')
     fig_mapa_calor = px.choropleth(dpto_volumen, geojson=dpto_volumen.geometry, locations=dpto_volumen.index, 
                                    color='VOLUMEN M3', title='Distribución de Volumen por Departamento')
