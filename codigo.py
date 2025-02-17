@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import geopandas as gpd
 from sklearn.cluster import KMeans
 from scipy.stats import entropy
 
