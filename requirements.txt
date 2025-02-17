@@ -1,7 +1,7 @@
 pandas
 geopandas
 plotly
-sklearn
+scikit-learn
 scipy
 KMeans
 entropy
