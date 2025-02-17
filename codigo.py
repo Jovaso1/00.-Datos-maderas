@@ -1,59 +1,71 @@
-import pandas as pd
 import streamlit as st
+import pandas as pd
 import plotly.express as px
+import geopandas as gpd
+from sklearn.cluster import KMeans
+from scipy.stats import entropy
 
-def cargar_datos(archivo):
-    """
-    Carga un archivo CSV o un enlace con los datos de madera.
+# Función para cargar los datos
+def cargar_datos(url):
+    """Carga los datos desde un enlace y realiza la interpolación de valores faltantes.
     
     Args:
-        archivo (str): Ruta del archivo CSV o URL de los datos.
+        url (str): Enlace al archivo CSV.
     
     Returns:
-        pd.DataFrame: DataFrame con los datos cargados y procesados.
+        pd.DataFrame: DataFrame con los datos cargados e interpolados.
     """
-    df = pd.read_csv(archivo)
-    df = df.interpolate(method='linear')  # Rellenar valores faltantes con interpolación lineal
+    df = pd.read_csv(url)
+    df = df.interpolate(method='linear')
     return df
 
-def especies_mas_comunes(df):
-    """
-    Identifica las especies de madera más comunes y sus volúmenes asociados a nivel país y por departamento.
+# Función para calcular el índice de Shannon
+def indice_shannon(df, grupo):
+    """Calcula el índice de diversidad de Shannon para un grupo dado.
     
     Args:
-        df (pd.DataFrame): DataFrame con los datos de madera.
+        df (pd.DataFrame): DataFrame con los datos.
+        grupo (str): Columna por la cual agrupar (ejemplo: 'DPTO').
     
     Returns:
-        tuple: DataFrames con el resumen de especies más comunes a nivel país y por departamento.
+        pd.DataFrame: DataFrame con el índice de Shannon por grupo.
     """
-    especies_pais = df.groupby("ESPECIE")["VOLUMEN M3"].sum().reset_index()
-    especies_pais = especies_pais.sort_values(by="VOLUMEN M3", ascending=False)
+    def calcular_shannon(grupo_df):
+        proporciones = grupo_df['VOLUMEN M3'] / grupo_df['VOLUMEN M3'].sum()
+        return entropy(proporciones)
     
-    especies_dpto = df.groupby(["DPTO", "ESPECIE"])["VOLUMEN M3"].sum().reset_index()
-    especies_dpto = especies_dpto.sort_values(by=["DPTO", "VOLUMEN M3"], ascending=[True, False])
-    
-    return especies_pais, especies_dpto
+    return df.groupby(grupo).apply(calcular_shannon).reset_index(name='Indice de Shannon')
 
-def main():
-    """
-    Aplicación en Streamlit para visualizar las especies de madera más comunes y sus volúmenes.
-    """
-    st.title("Análisis de Especies de Madera y Volúmenes")
-    archivo = st.file_uploader("Suba un archivo CSV con los datos de madera", type=["csv"])
-    
-    if archivo is not None:
-        df = cargar_datos(archivo)
-        especies_pais, especies_dpto = especies_mas_comunes(df)
-        
-        st.subheader("Especies más comunes a nivel país")
-        st.dataframe(especies_pais)
-        fig1 = px.bar(especies_pais.head(10), x='ESPECIE', y='VOLUMEN M3', title='Top 10 Especies con Mayor Volumen')
-        st.plotly_chart(fig1)
-        
-        st.subheader("Especies más comunes por departamento")
-        st.dataframe(especies_dpto)
-        fig2 = px.bar(especies_dpto.head(10), x='DPTO', y='VOLUMEN M3', color='ESPECIE', title='Volumen por Departamento y Especie')
-        st.plotly_chart(fig2)
+# Streamlit UI
+st.title("Análisis de Movilización de Madera en Colombia")
 
-if __name__ == "__main__":
-    main()
+url = st.text_input("Ingrese el enlace del archivo CSV:")
+
+if url:
+    df = cargar_datos(url)
+    
+    # Gráfico de barras - 10 especies con mayor volumen movilizado
+    top_especies = df.groupby("ESPECIE")['VOLUMEN M3'].sum().nlargest(10).reset_index()
+    fig_especies = px.bar(top_especies, x='ESPECIE', y='VOLUMEN M3', title='Top 10 Especies con Mayor Volumen')
+    st.plotly_chart(fig_especies)
+    
+    # Mapa de calor por departamento
+    dpto_volumen = df.groupby("DPTO")['VOLUMEN M3'].sum().reset_index()
+    colombia = gpd.read_file("https://github.com/fititnt/gis-dataset-brasil-colombia/raw/main/colombia.geojson")
+    dpto_volumen = colombia.merge(dpto_volumen, left_on='NOMBRE_DPT', right_on='DPTO')
+    fig_mapa_calor = px.choropleth(dpto_volumen, geojson=dpto_volumen.geometry, locations=dpto_volumen.index, 
+                                   color='VOLUMEN M3', title='Distribución de Volumen por Departamento')
+    st.plotly_chart(fig_mapa_calor)
+    
+    # Índice de Shannon por departamento
+    shannon_df = indice_shannon(df, 'DPTO')
+    st.dataframe(shannon_df)
+
+    # Clustering por departamentos
+    df_cluster = df.groupby("DPTO")["VOLUMEN M3"].sum().reset_index()
+    kmeans = KMeans(n_clusters=3, random_state=42, n_init=10).fit(df_cluster[["VOLUMEN M3"]])
+    df_cluster["Cluster"] = kmeans.labels_
+    st.dataframe(df_cluster)
+
+else:
+    st.warning("Ingrese un enlace para cargar los datos.")
